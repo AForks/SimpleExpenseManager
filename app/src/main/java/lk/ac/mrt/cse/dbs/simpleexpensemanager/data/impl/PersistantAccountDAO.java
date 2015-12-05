@@ -1,9 +1,12 @@
 package lk.ac.mrt.cse.dbs.simpleexpensemanager.data.impl;
 
+import android.content.ContentValues;
 import android.content.Context;
+import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 
 import lk.ac.mrt.cse.dbs.simpleexpensemanager.data.AccountDAO;
@@ -23,6 +26,7 @@ public class PersistantAccountDAO implements AccountDAO {
      *
      * */
 
+
     private SQLiteDatabase database;
     private MYSQLiteHelper dbHelper;
     private String[] allColumns = {MYSQLiteHelper.getAccountNo(), MYSQLiteHelper.getBANK(),
@@ -40,69 +44,88 @@ public class PersistantAccountDAO implements AccountDAO {
     public void close() {
         dbHelper.close();
     }
+    @Override
     public List<String> getAccountNumbersList() {
+        List<String> accountNumberList = new ArrayList<String>();
+        String args[] = {String.valueOf(MYSQLiteHelper.getAccountNo())};
 
+        Cursor cursor = database.query(MYSQLiteHelper.getAccountTb(),args,null,null,null,null,null);
 
-        return null;
+        cursor.moveToFirst();
+        while (!cursor.isAfterLast()){
+            accountNumberList.add(cursor.getString(0));
+            cursor.moveToNext();
+        }
+        cursor.close();
+        return accountNumberList;
     }
 
-    /***
-     * Get a list of accounts.
-     *
-     * @return - list of Account objects.
-     */
     @Override
     public List<Account> getAccountsList() {
-        return null;
+        List<Account> accounts = new ArrayList<Account>();
+
+        Cursor cursor = database.query(MYSQLiteHelper.getAccountTb(),
+                allColumns, null, null, null, null, null);
+
+        cursor.moveToFirst();
+        while (!cursor.isAfterLast()) {
+            Account account = cursorToAccount(cursor);
+            accounts.add(account);
+            cursor.moveToNext();
+        }
+        // make sure to close the cursor
+        cursor.close();
+        return accounts;
     }
 
-    /***
-     * Get the account given the account number.
-     *
-     * @param accountNo as String
-     * @return - the corresponding Account
-     * @throws InvalidAccountException - if the account number is invalid
-     */
     @Override
     public Account getAccount(String accountNo) throws InvalidAccountException {
-        return null;
+        String args[] = {accountNo};
+        Cursor cursor = database.rawQuery("SELECT * FROM "+MYSQLiteHelper.getAccountTb()+" WHERE "+MYSQLiteHelper.getAccountNo()+"=?", args);
+        cursor.moveToFirst();
+
+        Account account = cursorToAccount(cursor);
+        return account;
     }
 
-    /***
-     * Add an account to the accounts collection.
-     *
-     * @param account - the account to be added.
-     */
     @Override
     public void addAccount(Account account) {
+        ContentValues contentValues = new ContentValues();
+        contentValues.put(MYSQLiteHelper.getAccountNo(),account.getAccountNo());
+        contentValues.put(MYSQLiteHelper.getAccountHolder(),account.getAccountHolderName());
+        contentValues.put(MYSQLiteHelper.getBANK(),account.getBankName());
+        contentValues.put(MYSQLiteHelper.getBALANCE(), account.getBalance());
 
+        database.insert(MYSQLiteHelper.getAccountTb(), null, contentValues);
     }
 
-    /***
-     * Remove an account from the accounts collection.
-     *
-     * @param accountNo - of the account to be removed.
-     * @throws InvalidAccountException - if the account number is invalid
-     */
     @Override
     public void removeAccount(String accountNo) throws InvalidAccountException {
-
+        String[] args = {accountNo};
+        database.delete(MYSQLiteHelper.getAccountTb(), MYSQLiteHelper.getAccountNo()
+                + " =?", args);
     }
 
-    /***
-     * Update the balance of the given account. The type of the expense is specified in order to determine which
-     * action to be performed.
-     * <p/>
-     * The implementation has the flexibility to figure out how the updating operation is committed based on the type
-     * of the transaction.
-     *
-     * @param accountNo   - account number of the respective account
-     * @param expenseType - the type of the transaction
-     * @param amount      - amount involved
-     * @throws InvalidAccountException - if the account number is invalid
-     */
     @Override
     public void updateBalance(String accountNo, ExpenseType expenseType, double amount) throws InvalidAccountException {
+        Account account = getAccount(accountNo);
+        Double balance = account.getBalance();
+        if(expenseType == ExpenseType.EXPENSE){
+            balance = balance - amount;
+        }else{
+            balance = balance + amount;
+        }
+        account.setBalance(balance);
+        removeAccount(accountNo);
+        addAccount(account);
+    }
 
+    private Account cursorToAccount(Cursor cursor){
+        String accountName = cursor.getString(0);
+        String bankName = cursor.getString(1);
+        String accountHolderName = cursor.getString(2);
+        Double balance = cursor.getDouble(3);
+
+        return new Account(accountName,bankName,accountHolderName,balance);
     }
 }
